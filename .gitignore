@@ -10,3 +10,7 @@ __pycache__/
 # IDEs
 .vscode/
 .idea/
+
+# Development Files
+seed_db.py
+database.db

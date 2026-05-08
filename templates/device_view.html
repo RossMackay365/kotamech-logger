@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ client_name }} / {{ device_serial }}</title>
+    <style>
+        body { font-family: monospace, sans-serif; margin: 20px; max-width: 1000px; }
+        h1 { margin-bottom: 0; }
+        h2 { border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 30px; }
+        .meta { color: #666; margin-bottom: 20px; }
+        ul { padding-left: 20px; }
+        li { margin: 2px 0; }
+        .day { margin-bottom: 12px; }
+        .day-header { font-weight: bold; }
+        .empty { color: #888; font-style: italic; }
+        table { border-collapse: collapse; margin-top: 6px; }
+        td, th { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+        td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+        details { margin-top: 30px; border: 1px solid #ccc; border-radius: 4px; padding: 8px 12px; }
+        details > summary { cursor: pointer; font-size: 1.2em; font-weight: bold; padding: 4px 0; }
+        details[open] > summary { border-bottom: 1px solid #ccc; margin-bottom: 8px; padding-bottom: 6px; }
+        details details { margin-top: 8px; border-color: #ddd; padding: 4px 8px; }
+        details details > summary { font-size: 1em; font-weight: normal; }
+        details details[open] > summary { border-bottom: 1px solid #eee; }
+    </style>
+</head>
+<body>
+    <h1>{{ client_name }}</h1>
+    <div class="meta">Device serial: <strong>{{ device_serial }}</strong></div>
+
+    <h2>Consumables - Current State</h2>
+    {% if current_state %}
+        <table>
+            <tr>
+                <th>Name</th>
+                <th class="num">Today</th>
+                <th class="num">Past 30 days</th>
+                <th class="num">This year</th>
+            </tr>
+            {% for item in current_state %}
+                <tr>
+                    <td>{{ item.name }}</td>
+                    <td class="num">{{ "%.2f"|format(item.today) }}</td>
+                    <td class="num">{{ "%.2f"|format(item.past_30) }}</td>
+                    <td class="num">{{ "%.2f"|format(item.this_year) }}</td>
+                </tr>
+            {% endfor %}
+        </table>
+    {% else %}
+        <p class="empty">No consumable data recorded.</p>
+    {% endif %}
+
+    <details>
+        <summary>Errors (last 2 years) &mdash; {{ errors|length }}</summary>
+        {% if errors %}
+            <ul>
+            {% for entry in errors %}
+                <li>[{{ entry.timestamp }}] {{ entry.error_type }} - {{ entry.message }}</li>
+            {% endfor %}
+            </ul>
+        {% else %}
+            <p class="empty">No errors in the last 2 years.</p>
+        {% endif %}
+    </details>
+
+    <details>
+        <summary>Logs (last 30 days) &mdash; {{ logs|length }}</summary>
+        {% if logs %}
+            <ul>
+            {% for entry in logs %}
+                <li>[{{ entry.timestamp }}] {{ entry.message }}</li>
+            {% endfor %}
+            </ul>
+        {% else %}
+            <p class="empty">No logs in the last 30 days.</p>
+        {% endif %}
+    </details>
+
+    <details>
+        <summary>Consumables - Past 30 Days Breakdown</summary>
+        {% if last_30_days %}
+            {% for day in last_30_days %}
+                <details>
+                    <summary>{{ day.day }}</summary>
+                    <table>
+                        <tr>
+                            <th>Hour</th>
+                            {% for name in day.consumable_names %}
+                                <th class="num">{{ name }}</th>
+                            {% endfor %}
+                        </tr>
+                        {% for h in day.hours %}
+                            <tr>
+                                <td>{{ h.hour }}:00</td>
+                                {% for name in day.consumable_names %}
+                                    <td class="num">{% if name in h.by_name %}{{ "%.2f"|format(h.by_name[name]) }}{% else %}&mdash;{% endif %}</td>
+                                {% endfor %}
+                            </tr>
+                        {% endfor %}
+                    </table>
+                </details>
+            {% endfor %}
+        {% else %}
+            <p class="empty">No consumable data in the past 30 days.</p>
+        {% endif %}
+    </details>
+
+    <details>
+        <summary>Consumables - Yearly Totals</summary>
+        {% if yearly_totals.years %}
+            <table>
+                <tr>
+                    <th>Name</th>
+                    {% for y in yearly_totals.years %}
+                        <th class="num">{{ y }}</th>
+                    {% endfor %}
+                </tr>
+                {% for row in yearly_totals.rows %}
+                    <tr>
+                        <td>{{ row.name }}</td>
+                        {% for v in row.cells %}
+                            <td class="num">{% if v is not none %}{{ "%.2f"|format(v) }}{% else %}&mdash;{% endif %}</td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </table>
+        {% else %}
+            <p class="empty">No yearly totals yet.</p>
+        {% endif %}
+    </details>
+</body>
+</html>
