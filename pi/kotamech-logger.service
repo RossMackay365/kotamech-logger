@@ -1,0 +1,8 @@
+[Unit]
+Description=Kotamech Logger Update Tick
+Wants=network-online.target
+After=network-online.target tailscaled.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/kotamech-logger/client.py

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Kotamech Logger - Every Hour
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1h
+Persistent=true
+Unit=kotamech-logger.service
+
+[Install]
+WantedBy=timers.target

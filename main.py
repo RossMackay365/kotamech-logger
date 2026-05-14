@@ -20,10 +20,12 @@ from utils import (
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+# Data Cleanup
 CLEANUP_INTERVAL_SECONDS = 3600
-VACUUM_EVERY_N_TICKS = 24 * 7  # weekly when interval is hourly
+# Database Freeing
+VACUUM_EVERY_N_TICKS = 24 * 7
 
-
+# Data Retention Function - Called Every Hour
 async def _retention_loop():
     tick = 0
     while True:
@@ -73,13 +75,13 @@ class UpdateRequest(BaseModel):
     errors: list[ErrorEntry] = []
     consumables: list[ConsumableEntry] = []
 
-
+# Register New Device with Server
 @app.post("/register")
 def register(data: RegisterRequest):
     device_id = get_or_create_device(data.client_name, data.device_serial)
     return {"device_id": device_id}
 
-
+# Update Server with Logs, Errors, and Consumable Data from Device
 @app.post("/update")
 def update(data: UpdateRequest):
     device_id = resolve_device_id(data.client_name, data.device_serial)
@@ -105,7 +107,7 @@ def update(data: UpdateRequest):
             )
     return {"status": "ok", "device_id": device_id}
 
-
+# View Device Data and Logs (HTML Page)
 @app.get("/view/{client_name}/{device_serial}", response_class=HTMLResponse)
 def view_device(client_name: str, device_serial: str, request: Request):
     device_id = resolve_device_id(client_name, device_serial)
@@ -123,8 +125,9 @@ def view_device(client_name: str, device_serial: str, request: Request):
     current_month_str = now.strftime("%Y-%m")
     current_year_str = now.strftime("%Y")
 
+    # Retrieve Data from Database
     with get_conn() as conn:
-        # --- Logs / errors ---
+        # Logs & Errors
         logs_rows = conn.execute(
             "SELECT timestamp, message FROM logs "
             "WHERE device_id = ? AND timestamp >= ? "
@@ -138,15 +141,15 @@ def view_device(client_name: str, device_serial: str, request: Request):
             (device_id, errors_cutoff),
         ).fetchall()
 
-        # --- Current state totals: today / past 30 days / this year ---
-        # Today: raw SUM per consumable for today.
+        # Current Consumable Totals from Today
         today_rows = conn.execute(
             "SELECT name, SUM(value) AS s FROM consumables_raw "
             "WHERE device_id = ? AND substr(timestamp, 1, 10) = ? "
             "GROUP BY name",
             (device_id, today_str),
         ).fetchall()
-        # Past 30 days, days [today-29 .. yesterday] from daily tier; today from raw.
+
+        # Past 30 Days
         daily_30_total_rows = conn.execute(
             "SELECT name, SUM(avg_value * sample_count) AS s "
             "FROM consumables_daily "
@@ -154,8 +157,8 @@ def view_device(client_name: str, device_serial: str, request: Request):
             "GROUP BY name",
             (device_id, days30_window_start, yesterday_str),
         ).fetchall()
-        # This year: monthly tier for past months in this year + daily for current
-        # month (excluding today) + raw for today. Tiers don't overlap by design.
+
+        # Monthly Totals
         monthly_year_rows = conn.execute(
             "SELECT name, SUM(avg_value * sample_count) AS s "
             "FROM consumables_monthly "
@@ -171,7 +174,7 @@ def view_device(client_name: str, device_serial: str, request: Request):
             (device_id, current_month_str, today_str),
         ).fetchall()
 
-        # --- Yearly totals from yearly tier (one row per name per year) ---
+        # Yearly Totals
         yearly_rows = conn.execute(
             "SELECT name, year, avg_value * sample_count AS total "
             "FROM consumables_yearly "
@@ -180,7 +183,7 @@ def view_device(client_name: str, device_serial: str, request: Request):
             (device_id,),
         ).fetchall()
 
-        # --- Past 30 days breakdown: per-hour totals from raw ---
+        # Per-Hour Totals from Past 30 Days
         hourly_30_rows = conn.execute(
             "SELECT substr(timestamp, 1, 10) AS day, "
             "       substr(timestamp, 12, 2) AS hour, "
@@ -197,7 +200,7 @@ def view_device(client_name: str, device_serial: str, request: Request):
         for r in errors_rows
     ]
 
-    # Combine current-state totals per consumable name.
+    # Combine Totals into Current State
     totals: dict[str, dict[str, float]] = {}
 
     def _bucket(name: str) -> dict[str, float]:
@@ -221,7 +224,7 @@ def view_device(client_name: str, device_serial: str, request: Request):
         for name, v in sorted(totals.items())
     ]
 
-    # Yearly totals pivoted: one row per name, one column per year.
+    # Organise Totals for Template
     yearly_by_name: dict[str, dict[str, float]] = {}
     for r in yearly_rows:
         yearly_by_name.setdefault(r["name"], {})[r["year"]] = r["total"]
@@ -234,7 +237,6 @@ def view_device(client_name: str, device_serial: str, request: Request):
         ],
     }
 
-    # Past 30 days breakdown: per-day -> per-hour -> per-consumable total.
     days_map: dict[str, dict] = {}
     for r in hourly_30_rows:
         d = days_map.setdefault(r["day"], {"names": set(), "hours": {}})
@@ -252,6 +254,7 @@ def view_device(client_name: str, device_serial: str, request: Request):
         for day, d in sorted(days_map.items(), reverse=True)
     ]
 
+    # Return Template
     return templates.TemplateResponse(
         request,
         "device_view.html",

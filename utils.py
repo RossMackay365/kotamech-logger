@@ -29,7 +29,6 @@ def get_conn():
 
 def init_db() -> None:
     with get_conn() as conn:
-        # auto_vacuum must be set before tables exist on a fresh DB.
         conn.execute("PRAGMA auto_vacuum = INCREMENTAL")
         conn.executescript(
             """
@@ -103,7 +102,7 @@ def init_db() -> None:
             """
         )
 
-
+# Initialise Device (or Get Existing) and Return ID
 def get_or_create_device(client_name: str, device_serial: str) -> int:
     now = datetime.now().isoformat(timespec="seconds")
     with get_conn() as conn:
@@ -111,15 +110,18 @@ def get_or_create_device(client_name: str, device_serial: str) -> int:
             "SELECT id FROM devices WHERE client_name = ? AND device_serial = ?",
             (client_name, device_serial),
         ).fetchone()
+        # If Device Exists -> Return Device ID
         if row:
             return row["id"]
+        
+        # Else -> Create Device and Return New ID
         cur = conn.execute(
             "INSERT INTO devices (client_name, device_serial, created_at) VALUES (?, ?, ?)",
             (client_name, device_serial, now),
         )
         return cur.lastrowid
 
-
+# Get Device ID (None if Not Found)
 def resolve_device_id(client_name: str, device_serial: str) -> int | None:
     with get_conn() as conn:
         row = conn.execute(
@@ -128,14 +130,14 @@ def resolve_device_id(client_name: str, device_serial: str) -> int | None:
         ).fetchone()
         return row["id"] if row else None
 
-
+# Cleanup Helper Functions
 def _shift_month(year: int, month: int, delta: int) -> tuple[int, int]:
     total = year * 12 + (month - 1) + delta
     return total // 12, total % 12 + 1
 
 
 def _rollup_daily(conn: sqlite3.Connection, today_iso: str) -> None:
-    # Aggregate completed days from raw into daily. Idempotent: ON CONFLICT IGNORE.
+    # Aggregate Hourly Data into Daily Summary
     conn.execute(
         """
         INSERT OR IGNORE INTO consumables_daily (device_id, day, name, avg_value, sample_count)
@@ -150,7 +152,7 @@ def _rollup_daily(conn: sqlite3.Connection, today_iso: str) -> None:
 
 
 def _rollup_monthly(conn: sqlite3.Connection, current_month: str) -> None:
-    # Weighted average of daily rows into monthly. Idempotent.
+    # Aggregate Daily Data into Monthly Summary
     conn.execute(
         """
         INSERT OR IGNORE INTO consumables_monthly (device_id, month, name, avg_value, sample_count)
@@ -164,8 +166,8 @@ def _rollup_monthly(conn: sqlite3.Connection, current_month: str) -> None:
         (current_month,),
     )
 
-
 def _rollup_yearly(conn: sqlite3.Connection, current_year: str) -> None:
+    # Aggregate Monthly Data into Yearly Summary
     conn.execute(
         """
         INSERT OR IGNORE INTO consumables_yearly (device_id, year, name, avg_value, sample_count)
@@ -180,6 +182,7 @@ def _rollup_yearly(conn: sqlite3.Connection, current_year: str) -> None:
     )
 
 
+# Cleanup Function -> Combines Data, Deletes Expired Data
 def cleanup_retention() -> None:
     now = datetime.now()
     today_iso = now.date().isoformat()
@@ -196,7 +199,6 @@ def cleanup_retention() -> None:
     errors_cutoff = (now - timedelta(days=ERRORS_RETENTION_DAYS)).isoformat(timespec="seconds")
 
     with get_conn() as conn:
-        # Roll up first so nothing is lost when we delete below.
         _rollup_daily(conn, today_iso)
         _rollup_monthly(conn, current_month)
         _rollup_yearly(conn, current_year)
@@ -211,6 +213,6 @@ def cleanup_retention() -> None:
 
 
 def run_incremental_vacuum() -> None:
-    # Reclaims free pages without rewriting the whole file or holding a long lock.
+    # Reclaim Free Data Pages After Cleanup
     with get_conn() as conn:
         conn.execute("PRAGMA incremental_vacuum")
