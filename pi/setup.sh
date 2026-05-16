@@ -7,7 +7,7 @@ set -euo pipefail
 
 # --- Configuration ---------------------------------------------------------
 TS_AUTHKEY="tskey-auth-FILL-ME-IN"
-TS_TAG="tag:FILL-ME-IN"
+TS_TAG="tag:device"
 TS_HOSTNAME="FILL-ME-IN"
 # -------------------------------------------------------------------------
 

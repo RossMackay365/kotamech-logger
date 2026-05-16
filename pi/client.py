@@ -5,12 +5,13 @@ Invoked by kotamech-logger.service (hourly via kotamech-logger.timer).
 For Each Pi:
 - Update Configuration Values
 - Update Collect Logs/Errors/Consumables Functions
+- Disable Key Expiry in Tailscale
 """
 import sys
 import requests
 
 # --- Configuration Values ---------------------------------------------------------
-BACKEND_URL   = "http://log-server:8000"   # Tailscale MagicDNS Server Hostname
+BACKEND_URL   = "100.86.104.44:8000"   # Tailscale Log Server IP:Port
 CLIENT_NAME   = "FILL-ME-IN"
 DEVICE_SERIAL = "FILL-ME-IN"
 # -------------------------------------------------------------------------
