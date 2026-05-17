@@ -2,14 +2,13 @@
 
 How to set up a new Raspberry Pi.
 
-## 1. Copy The /Pi Folder to The Raspberry Pi
+## 1. Copy The /loggin Folder to The Raspberry Pi
 
 ## 2. Edit Placeholders
 
 Open `setup.sh` and complete:
 
 - `TS_AUTHKEY` — the Tailscale auth key
-- `TS_TAG` — the Tailscale tag (e.g. `tag:logger`)
 - `TS_HOSTNAME` — what this Pi should be called on the tailnet
 
 Open `client.py` and complete:
