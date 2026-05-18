@@ -26,7 +26,8 @@ Do this **before** running the setup script. Once setup runs, the timer starts f
 ## 4. Run Setup Shell Script
 
 ```
-cd pi
+cd logging
+chmod +x setup.sh
 sudo ./setup.sh
 ```
 

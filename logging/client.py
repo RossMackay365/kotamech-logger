@@ -11,7 +11,7 @@ import sys
 import requests
 
 # --- Configuration Values ---------------------------------------------------------
-BACKEND_URL   = "100.86.104.44:8000"   # Tailscale Log Server IP:Port
+BACKEND_URL   = "http://100.86.104.44:8000"   # Tailscale Log Server IP:Port
 CLIENT_NAME   = "FILL-ME-IN"
 DEVICE_SERIAL = "FILL-ME-IN"
 # -------------------------------------------------------------------------
