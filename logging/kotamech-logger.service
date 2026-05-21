@@ -5,4 +5,4 @@ After=network-online.target tailscaled.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /opt/kotamech-logger/client.py
+ExecStart=__INSTALL_DIR__/venv/bin/python __INSTALL_DIR__/client.py

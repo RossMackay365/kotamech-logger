@@ -2,6 +2,8 @@
 # Kotamech Logger - Raspberry Pi bootstrap.
 # Edit the three placeholders below, then run with sudo from this directory:
 #   sudo ./setup.sh
+#
+# A venv is created at ./venv and the systemd service is pointed at it.
 
 set -euo pipefail
 
@@ -25,9 +27,9 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "[1/6] apt update + install python3, python3-requests, curl"
+echo "[1/6] apt update + install python3, python3-venv, curl"
 apt-get update
-apt-get install -y python3 python3-requests curl
+apt-get install -y python3 python3-venv curl
 
 echo "[2/6] Installing Tailscale"
 curl -fsSL https://tailscale.com/install.sh | sh
@@ -38,12 +40,17 @@ tailscale up \
     --advertise-tags="$TS_TAG" \
     --hostname="$TS_HOSTNAME"
 
-echo "[4/6] Installing client.py to /opt/kotamech-logger/"
-install -m 755 -D "$SCRIPT_DIR/client.py" /opt/kotamech-logger/client.py
+echo "[4/6] Creating venv at $SCRIPT_DIR/venv and installing dependencies"
+python3 -m venv "$SCRIPT_DIR/venv"
+"$SCRIPT_DIR/venv/bin/pip" install --upgrade pip
+"$SCRIPT_DIR/venv/bin/pip" install -r "$SCRIPT_DIR/requirements.txt"
 
-echo "[5/6] Installing systemd units"
-install -m 644 "$SCRIPT_DIR/kotamech-logger.service" /etc/systemd/system/kotamech-logger.service
-install -m 644 "$SCRIPT_DIR/kotamech-logger.timer"   /etc/systemd/system/kotamech-logger.timer
+echo "[5/6] Installing systemd units (install dir=$SCRIPT_DIR)"
+sed "s|__INSTALL_DIR__|${SCRIPT_DIR}|g" \
+    "$SCRIPT_DIR/kotamech-logger.service" \
+    > /etc/systemd/system/kotamech-logger.service
+chmod 644 /etc/systemd/system/kotamech-logger.service
+install -m 644 "$SCRIPT_DIR/kotamech-logger.timer" /etc/systemd/system/kotamech-logger.timer
 systemctl daemon-reload
 
 echo "[6/6] Enabling kotamech-logger.timer"
@@ -51,6 +58,7 @@ systemctl enable --now kotamech-logger.timer
 
 echo
 echo "Done."
+echo "  Install dir:   $SCRIPT_DIR"
 echo "  Tailscale IP:  $(tailscale ip -4 2>/dev/null || echo '(unavailable)')"
 echo "  Timer status:  $(systemctl is-active kotamech-logger.timer)"
 echo "  Logs:          journalctl -u kotamech-logger.service -f"
