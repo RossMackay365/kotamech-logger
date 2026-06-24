@@ -36,6 +36,7 @@
                 <th class="num">Today</th>
                 <th class="num">Past 30 days</th>
                 <th class="num">This year</th>
+                <th class="num">Total used</th>
             </tr>
             {% for item in current_state %}
                 <tr>
@@ -43,6 +44,7 @@
                     <td class="num">{{ "%.2f"|format(item.today) }}</td>
                     <td class="num">{{ "%.2f"|format(item.past_30) }}</td>
                     <td class="num">{{ "%.2f"|format(item.this_year) }}</td>
+                    <td class="num">{{ "%.2f"|format(item.total) }}</td>
                 </tr>
             {% endfor %}
         </table>

@@ -20,6 +20,8 @@ A simple logging system for collecting data from remote devices (Raspberry Pis) 
 
    Replace `log-server` with whatever the server's tailnet hostname is (check the Tailscale admin console if unsure). `<client_name>` and `<device_serial>` are whatever was configured on the Pi.
 
+4. Log in with the admin account: `admin@log-server`.
+
 ## System Design
 
 ```
@@ -49,6 +51,47 @@ See [logging/README.md](logging/README.md) for the full Pi setup walkthrough. Sh
 3. Run `sudo ./setup.sh`.
 
 The Pi will join the tailnet, install itself as a systemd timer, and start sending data within a couple of minutes.
+
+## Redeploying the Server
+
+The server runs on the Pi as a systemd service (`log-server.service`) that simply
+runs uvicorn:
+
+```
+ExecStart=/home/admin/log-server/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+```
+
+`Restart=always` only restarts the *process* if it crashes — it does **not** pull
+new code. There is no auto-deploy, so redeploying means copying the new files up
+and restarting the service.
+
+From this project directory on your machine, push the server files (not `venv`,
+`__pycache__`, or `database.db`):
+
+```bash
+scp main.py utils.py requirements.txt admin@log-server:~/log-server/
+scp -r templates admin@log-server:~/log-server/
+```
+
+Then on the Pi:
+
+```bash
+ssh admin@log-server
+
+sudo systemctl stop log-server          # release the DB file lock
+
+# Optional: start from a clean database. init_db() rebuilds an empty schema
+# (CREATE TABLE IF NOT EXISTS) on startup, so just delete the file + sidecars.
+rm -f ~/log-server/database.db ~/log-server/database.db-wal ~/log-server/database.db-shm
+
+# Only needed if requirements.txt changed:
+~/log-server/venv/bin/pip install -r ~/log-server/requirements.txt
+
+sudo systemctl start log-server
+systemctl status log-server --no-pager
+journalctl -u log-server -f             # watch it boot
+```
 
 ## Project Layout
 

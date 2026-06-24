@@ -140,6 +140,12 @@ def view_device(client_name: str, device_serial: str, request: Request):
             (device_id, errors_cutoff),
         ).fetchall()
 
+        # Latest cumulative total reported per consumable (survives raw retention)
+        cumulative_rows = conn.execute(
+            "SELECT name, value FROM consumables_cumulative WHERE device_id = ?",
+            (device_id,),
+        ).fetchall()
+
         # Current Consumable Totals from Today
         today_rows = conn.execute(
             "SELECT name, SUM(value) AS s FROM consumables_raw "
@@ -203,8 +209,14 @@ def view_device(client_name: str, device_serial: str, request: Request):
     totals: dict[str, dict[str, float]] = {}
 
     def _bucket(name: str) -> dict[str, float]:
-        return totals.setdefault(name, {"today": 0.0, "past_30": 0.0, "this_year": 0.0})
+        return totals.setdefault(
+            name, {"today": 0.0, "past_30": 0.0, "this_year": 0.0, "total": 0.0}
+        )
 
+    # Cumulative totals also seed the bucket, so a consumable shows up even when
+    # its usage in every window is zero (e.g. a freshly registered device).
+    for r in cumulative_rows:
+        _bucket(r["name"])["total"] = r["value"] or 0.0
     for r in today_rows:
         s = r["s"] or 0.0
         b = _bucket(r["name"])
@@ -219,7 +231,13 @@ def view_device(client_name: str, device_serial: str, request: Request):
         _bucket(r["name"])["this_year"] += r["s"] or 0.0
 
     current_state = [
-        {"name": name, "today": v["today"], "past_30": v["past_30"], "this_year": v["this_year"]}
+        {
+            "name": name,
+            "today": v["today"],
+            "past_30": v["past_30"],
+            "this_year": v["this_year"],
+            "total": v["total"],
+        }
         for name, v in sorted(totals.items())
     ]
 
