@@ -13,6 +13,7 @@ from utils import (
     get_conn,
     get_or_create_device,
     init_db,
+    record_consumable_usage,
     resolve_device_id,
     run_incremental_vacuum,
 )
@@ -100,11 +101,9 @@ def update(data: UpdateRequest):
                 "INSERT INTO errors (device_id, timestamp, error_type, message) VALUES (?, ?, ?, ?)",
                 [(device_id, ts, e.error_type, e.message) for e in data.errors],
             )
-        if data.consumables:
-            conn.executemany(
-                "INSERT INTO consumables_raw (device_id, timestamp, name, value) VALUES (?, ?, ?, ?)",
-                [(device_id, ts, c.name, c.value) for c in data.consumables],
-            )
+        # Consumable values are cumulative totals; store the per-hour delta.
+        for c in data.consumables:
+            record_consumable_usage(conn, device_id, ts, c.name, c.value)
     return {"status": "ok", "device_id": device_id}
 
 # View Device Data and Logs (HTML Page)

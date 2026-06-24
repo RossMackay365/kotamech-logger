@@ -11,6 +11,7 @@ set -euo pipefail
 TS_AUTHKEY="tskey-auth-FILL-ME-IN"
 TS_TAG="tag:device"
 TS_HOSTNAME="FILL-ME-IN"
+LOG_FILE="FILL-ME-IN"   # absolute path to the JSON log file Logger.py writes
 # -------------------------------------------------------------------------
 
 if [[ "$EUID" -ne 0 ]]; then
@@ -18,7 +19,7 @@ if [[ "$EUID" -ne 0 ]]; then
     exit 1
 fi
 
-for var in TS_AUTHKEY TS_TAG TS_HOSTNAME; do
+for var in TS_AUTHKEY TS_TAG TS_HOSTNAME LOG_FILE; do
     if [[ "${!var}" == *FILL-ME-IN* ]]; then
         echo "Error: $var is still a placeholder. Edit setup.sh." >&2
         exit 1
@@ -46,7 +47,8 @@ python3 -m venv "$SCRIPT_DIR/venv"
 "$SCRIPT_DIR/venv/bin/pip" install -r "$SCRIPT_DIR/requirements.txt"
 
 echo "[5/6] Installing systemd units (install dir=$SCRIPT_DIR)"
-sed "s|__INSTALL_DIR__|${SCRIPT_DIR}|g" \
+sed -e "s|__INSTALL_DIR__|${SCRIPT_DIR}|g" \
+    -e "s|__LOG_FILE__|${LOG_FILE}|g" \
     "$SCRIPT_DIR/kotamech-logger.service" \
     > /etc/systemd/system/kotamech-logger.service
 chmod 644 /etc/systemd/system/kotamech-logger.service

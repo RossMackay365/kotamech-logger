@@ -66,6 +66,14 @@ def init_db() -> None:
                 FOREIGN KEY (device_id) REFERENCES devices(id)
             );
 
+            CREATE TABLE IF NOT EXISTS consumables_cumulative (
+                device_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                value REAL NOT NULL,
+                PRIMARY KEY (device_id, name),
+                FOREIGN KEY (device_id) REFERENCES devices(id)
+            );
+
             CREATE TABLE IF NOT EXISTS consumables_daily (
                 device_id INTEGER NOT NULL,
                 day TEXT NOT NULL,
@@ -120,6 +128,38 @@ def get_or_create_device(client_name: str, device_serial: str) -> int:
             (client_name, device_serial, now),
         )
         return cur.lastrowid
+
+# Convert a Cumulative Consumable Total into Per-Hour Usage and Store It
+def record_consumable_usage(
+    conn: sqlite3.Connection,
+    device_id: int,
+    timestamp: str,
+    name: str,
+    cumulative_value: float,
+) -> None:
+    """Store per-hour usage derived from a running cumulative total.
+
+    Clients report the cumulative total used for each consumable. The first
+    reading for a (device, consumable) sets the baseline and records 0 usage;
+    every later reading records (current - previous) as the usage for the hour.
+    The latest cumulative value is persisted so it survives raw-data retention.
+    """
+    row = conn.execute(
+        "SELECT value FROM consumables_cumulative WHERE device_id = ? AND name = ?",
+        (device_id, name),
+    ).fetchone()
+    usage = 0.0 if row is None else cumulative_value - row["value"]
+
+    conn.execute(
+        "INSERT INTO consumables_raw (device_id, timestamp, name, value) VALUES (?, ?, ?, ?)",
+        (device_id, timestamp, name, usage),
+    )
+    conn.execute(
+        "INSERT INTO consumables_cumulative (device_id, name, value) VALUES (?, ?, ?) "
+        "ON CONFLICT(device_id, name) DO UPDATE SET value = excluded.value",
+        (device_id, name, cumulative_value),
+    )
+
 
 # Get Device ID (None if Not Found)
 def resolve_device_id(client_name: str, device_serial: str) -> int | None:

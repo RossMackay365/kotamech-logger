@@ -18,18 +18,53 @@ Open `setup.sh` and complete:
 
 - `TS_AUTHKEY` — the Tailscale auth key
 - `TS_HOSTNAME` — what this Pi should be called on the tailnet
+- `LOG_FILE` — absolute path to the JSON log file that `Logger.py` writes (this is passed to the service as the `KOTAMECH_LOG_FILE` environment variable)
 
-Open `client.py` and complete:
+Open `logging_client.py` and complete:
 
 - `BACKEND_URL` — The backend's tailnet address (e.g. `http://log-server:8000`)
-- `CLIENT_NAME` — The client for the device
-- `DEVICE_SERIAL` — The device's serial number
 
-## 3. Replace Example Data
+`client_name` and `device_serial` are **not** set here — they are read from the JSON log file (see below).
 
-Open `client.py` and replace the `collect_logs`, `collect_errors`, and `collect_consumables` functions with whatever you actually want to send. See below for the exact shapes the backend expects.
+## 3. Produce the Log File
 
-Do this **before** running the setup script. Once setup runs, the timer starts firing within a couple of minutes and any leftover example data will be sent to the backend.
+`logging_client.py` no longer collects data itself. Each tick it reads the whole JSON file at `KOTAMECH_LOG_FILE`, sends it to the backend, then wipes the `logs` and `errors` arrays (consumables are kept). Your machine code is responsible for filling that file in.
+
+Use `Logger.py` (or any code that writes the same shape) to maintain the file:
+
+```json
+{
+  "client_name": "string",
+  "device_serial": "string",
+  "logs": ["string"],
+  "errors": [{ "error_type": "string", "message": "string" }],
+  "consumables": [{ "name": "string", "value": 1.23 }]
+}
+```
+
+### `Logger.py` helpers
+
+`Logger.py` is a small helper module **your machine code imports and calls** — it is not run by this service or the timer. Keeping the file populated is entirely the machine's responsibility; the client only reads, sends, and clears it. The methods on offer are:
+
+| Method | What it does |
+| --- | --- |
+| `setup()` | Loads the existing file, or creates it from `default_payload` if absent. Call once at startup. |
+| `add_log(message)` | Appends a log string. |
+| `add_error(error_type, message)` | Appends an error `{error_type, message}`. |
+| `update_consumable(name, value)` | Sets the running cumulative total for a consumable (adds it if new). |
+| `get_consumable_value(name)` | Returns the current stored value for a consumable, or `None`. |
+| `save_payload()` | Writes the in-memory payload to disk. |
+| `clear_logs_and_errors()` | Empties logs and errors, then saves. |
+
+Important: `add_log`, `add_error`, and `update_consumable` only mutate the in-memory payload. **Call `save_payload()` to flush to disk** — the client reads the file, so anything not saved won't be sent.
+
+Set `client_name` and `device_serial` in the file (e.g. via `Logger.py`'s `default_payload`) before the first tick.
+
+Path: point `Logger.py`'s `filename` and the `LOG_FILE` in `setup.sh` at the **same absolute path** (e.g. `/home/admin/logging/fileName.json`). `Logger.py`'s default `filename` is relative, so it would otherwise resolve against the machine code's working directory while the service reads the absolute `LOG_FILE` — leaving the writer and reader on two different files.
+
+If the file doesn't exist when a tick runs, `logging_client.py` creates it from a default skeleton (with `client_name`/`device_serial` set to `"TO-DO"`) and skips that tick — so a missing file never crashes the service. While those two fields are still `"TO-DO"` (or empty), the client **refuses to register**, so an unconfigured device is never created on the backend. Set the real values in the file before the timer fires.
+
+Consumable `value` is the **running cumulative total used** for that consumable, not the amount used in the last hour. `logging_client.py` leaves consumables in place between ticks; the backend turns successive cumulative readings into per-hour usage.
 
 ## 4. Run Setup Shell Script
 
@@ -46,13 +81,13 @@ This installs Python + `python3-venv`, installs and connects Tailscale, creates 
 - See logs: `journalctl -u kotamech-logger.service -f`
 - Trigger an update now: `sudo systemctl start kotamech-logger.service`
 - Check the timer: `systemctl status kotamech-logger.timer`
-- Run client manually inside the venv: `./venv/bin/python client.py`
+- Run client manually inside the venv: `KOTAMECH_LOG_FILE=/path/to/fileName.json ./venv/bin/python logging_client.py`
 - Re-install Python deps: `./venv/bin/pip install -r requirements.txt`
 
 ## Backend JSON Reference
 ### POST `/register`
 
-Registers the device. Idempotent, safe to call every tick. `client.py` calls this before every update.
+Registers the device. Idempotent, safe to call every tick. `logging_client.py` calls this before every update.
 
 Request body:
 
@@ -96,7 +131,7 @@ Field details:
 
 - `logs`: List of plain strings. Each string is stored as one log row with a server-side timestamp.
 - `errors`: List of objects. `error_type` is a short category label (e.g. `"network"`, `"hardware"`); `message` is the human-readable detail.
-- `consumables`: List of objects. `value` is a `float` representing **usage in the past hour**, not the running total left in the machine. The backend sums these over time. If you ever switch to sending totals, the backend will need to change too.
+- `consumables`: List of objects. `value` is a `float` representing the **running cumulative total used** for that consumable. The backend stores the last cumulative value per device+consumable and records the difference between successive readings as the usage for that hour. The first reading for a new device+consumable sets the baseline and records `0` usage. Values are assumed to only increase; a counter that resets or is replaced will under-report until it passes its previous high.
 
 Response:
 
@@ -106,4 +141,4 @@ Response:
 
 Errors:
 
-- `404 Device not registered` — call `/register` first (or use `client.py`, which does it for you every tick).
+- `404 Device not registered` — call `/register` first (or use `logging_client.py`, which does it for you every tick).
