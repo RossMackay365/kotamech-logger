@@ -102,15 +102,8 @@ def clear_logs_and_errors(path: str) -> None:
 def main() -> None:
     try:
         path = log_file_path()
-        if ensure_file(path):
-            print(
-                f"created log file at {path}; "
-                f"set client_name/device_serial and data before the next tick"
-            )
-            return
         payload = load_payload(path)
-        client_name, device_serial = require_identity(payload)
-        device_id = register(client_name, device_serial)
+        device_id = register(payload["client_name"], payload["device_serial"])
         update(payload)
         clear_logs_and_errors(path)
         print(

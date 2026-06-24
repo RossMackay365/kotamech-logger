@@ -20,17 +20,17 @@ Open `setup.sh` and complete:
 - `TS_HOSTNAME` — what this Pi should be called on the tailnet
 - `LOG_FILE` — absolute path to the JSON log file that `Logger.py` writes (this is passed to the service as the `KOTAMECH_LOG_FILE` environment variable)
 
-Open `logging_client.py` and complete:
+Open 'Logger.py' and complete:
+- `filename` — absolute path to the JSON log file.
+- `client_name` — client_name
+- `device_serial` — device_serial
 
-- `BACKEND_URL` — The backend's tailnet address (e.g. `http://log-server:8000`)
-
-`client_name` and `device_serial` are **not** set here — they are read from the JSON log file (see below).
 
 ## 3. Produce the Log File
 
 `logging_client.py` no longer collects data itself. Each tick it reads the whole JSON file at `KOTAMECH_LOG_FILE`, sends it to the backend, then wipes the `logs` and `errors` arrays (consumables are kept). Your machine code is responsible for filling that file in.
 
-Use `Logger.py` (or any code that writes the same shape) to maintain the file:
+Use `Logger.py` to maintain the file:
 
 ```json
 {
@@ -57,12 +57,6 @@ Use `Logger.py` (or any code that writes the same shape) to maintain the file:
 | `clear_logs_and_errors()` | Empties logs and errors, then saves. |
 
 Important: `add_log`, `add_error`, and `update_consumable` only mutate the in-memory payload. **Call `save_payload()` to flush to disk** — the client reads the file, so anything not saved won't be sent.
-
-Set `client_name` and `device_serial` in the file (e.g. via `Logger.py`'s `default_payload`) before the first tick.
-
-Path: point `Logger.py`'s `filename` and the `LOG_FILE` in `setup.sh` at the **same absolute path** (e.g. `/home/admin/logging/fileName.json`). `Logger.py`'s default `filename` is relative, so it would otherwise resolve against the machine code's working directory while the service reads the absolute `LOG_FILE` — leaving the writer and reader on two different files.
-
-If the file doesn't exist when a tick runs, `logging_client.py` creates it from a default skeleton (with `client_name`/`device_serial` set to `"TO-DO"`) and skips that tick — so a missing file never crashes the service. While those two fields are still `"TO-DO"` (or empty), the client **refuses to register**, so an unconfigured device is never created on the backend. Set the real values in the file before the timer fires.
 
 Consumable `value` is the **running cumulative total used** for that consumable, not the amount used in the last hour. `logging_client.py` leaves consumables in place between ticks; the backend turns successive cumulative readings into per-hour usage.
 
