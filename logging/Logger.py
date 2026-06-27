@@ -5,6 +5,7 @@ filename = "fileName.json"
 
 default_payload = {
         "client_name": "TO-DO",
+        "device_name": "TO-DO",
         "device_serial": "TO-DO",
         "logs":[],
         "errors":[],

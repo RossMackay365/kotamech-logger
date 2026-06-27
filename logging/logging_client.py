@@ -32,6 +32,7 @@ PLACEHOLDER = "TO-DO"
 
 DEFAULT_PAYLOAD = {
     "client_name": PLACEHOLDER,
+    "device_name": PLACEHOLDER,
     "device_serial": PLACEHOLDER,
     "logs": [],
     "errors": [],
@@ -66,20 +67,29 @@ def load_payload(path: str) -> dict:
         return json.load(f)
 
 
-def require_identity(payload: dict) -> tuple[str, str]:
-    """Return (client_name, device_serial), refusing unconfigured placeholders."""
+def require_identity(payload: dict) -> tuple[str, str, str]:
+    """Return (client_name, device_name, device_serial), refusing placeholders."""
     client_name = payload.get("client_name", "")
+    device_name = payload.get("device_name", "")
     device_serial = payload.get("device_serial", "")
-    if client_name in ("", PLACEHOLDER) or device_serial in ("", PLACEHOLDER):
+    if (
+        client_name in ("", PLACEHOLDER)
+        or device_name in ("", PLACEHOLDER)
+        or device_serial in ("", PLACEHOLDER)
+    ):
         raise RuntimeError(
-            f"client_name/device_serial not configured in the log file "
-            f"(got {client_name!r}/{device_serial!r}); refusing to register"
+            f"client_name/device_name/device_serial not configured in the log file "
+            f"(got {client_name!r}/{device_name!r}/{device_serial!r}); refusing to register"
         )
-    return client_name, device_serial
+    return client_name, device_name, device_serial
 
 
-def register(client_name: str, device_serial: str) -> int:
-    payload = {"client_name": client_name, "device_serial": device_serial}
+def register(client_name: str, device_name: str, device_serial: str) -> int:
+    payload = {
+        "client_name": client_name,
+        "device_name": device_name,
+        "device_serial": device_serial,
+    }
     r = requests.post(f"{BACKEND_URL}/register", json=payload, timeout=REQUEST_TIMEOUT)
     r.raise_for_status()
     return r.json()["device_id"]
@@ -103,7 +113,8 @@ def main() -> None:
     try:
         path = log_file_path()
         payload = load_payload(path)
-        device_id = register(payload["client_name"], payload["device_serial"])
+        client_name, device_name, device_serial = require_identity(payload)
+        device_id = register(client_name, device_name, device_serial)
         update(payload)
         clear_logs_and_errors(path)
         print(

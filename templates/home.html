@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Kotamech Log Server{% endblock %}
+{% block heading %}Kotamech Log Server{% endblock %}
+
+{% block content %}
+<div class="panel">
+    <input type="text" class="search" placeholder="Search clients...">
+    {% if clients %}
+        <ul class="nav-list">
+        {% for client in clients %}
+            <li><a href="/{{ client | urlencode }}">{{ client }}</a></li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p class="empty-note">No clients recorded yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

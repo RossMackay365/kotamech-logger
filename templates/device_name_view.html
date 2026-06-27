@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}{{ client_name }} - {{ device_name }}{% endblock %}
+
+{% block back %}
+<div class="back-bar"><a class="btn" href="/{{ client_name | urlencode }}">&larr; Back</a></div>
+{% endblock %}
+
+{% block crumbs %}
+<div class="crumbs">
+    <a href="/">Home</a> /
+    <a href="/{{ client_name | urlencode }}">{{ client_name }}</a>
+</div>
+{% endblock %}
+
+{% block heading %}{{ client_name }} - {{ device_name }}{% endblock %}
+
+{% block content %}
+<div class="panels">
+    <div class="panel">
+        <h2 class="panel-title">Serial numbers</h2>
+        <input type="text" class="search" placeholder="Search serials...">
+        {% if device_serials %}
+            <ul class="nav-list">
+            {% for serial in device_serials %}
+                <li><a href="/{{ client_name | urlencode }}/{{ device_name | urlencode }}/{{ serial | urlencode }}">{{ serial }}</a></li>
+            {% endfor %}
+            </ul>
+        {% else %}
+            <p class="empty-note">No serial numbers for this device.</p>
+        {% endif %}
+    </div>
+    {% include "_chart_panel.html" %}
+</div>
+{% endblock %}

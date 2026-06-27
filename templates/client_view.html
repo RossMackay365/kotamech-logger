@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}{{ client_name }}{% endblock %}
+
+{% block back %}
+<div class="back-bar"><a class="btn" href="/">&larr; Back</a></div>
+{% endblock %}
+
+{% block crumbs %}
+<div class="crumbs"><a href="/">Home</a></div>
+{% endblock %}
+
+{% block heading %}{{ client_name }}{% endblock %}
+
+{% block content %}
+<div class="panels">
+    <div class="panel">
+        <h2 class="panel-title">Devices</h2>
+        <input type="text" class="search" placeholder="Search devices...">
+        {% if device_names %}
+            <ul class="nav-list">
+            {% for device_name in device_names %}
+                <li><a href="/{{ client_name | urlencode }}/{{ device_name | urlencode }}">{{ device_name }}</a></li>
+            {% endfor %}
+            </ul>
+        {% else %}
+            <p class="empty-note">No devices for this client.</p>
+        {% endif %}
+    </div>
+    {% include "_chart_panel.html" %}
+</div>
+{% endblock %}

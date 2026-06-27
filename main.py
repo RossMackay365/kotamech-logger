@@ -5,11 +5,13 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from utils import (
     cleanup_retention,
+    chart_payload,
     get_conn,
     get_or_create_device,
     init_db,
@@ -19,6 +21,7 @@ from utils import (
 )
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+STATIC_DIR = Path(__file__).parent / "static"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # Data Cleanup
@@ -52,10 +55,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 class RegisterRequest(BaseModel):
     client_name: str
+    device_name: str
     device_serial: str
 
 
@@ -71,6 +76,7 @@ class ConsumableEntry(BaseModel):
 
 class UpdateRequest(BaseModel):
     client_name: str
+    device_name: str
     device_serial: str
     logs: list[str] = []
     errors: list[ErrorEntry] = []
@@ -79,13 +85,17 @@ class UpdateRequest(BaseModel):
 # Register New Device with Server
 @app.post("/register")
 def register(data: RegisterRequest):
-    device_id = get_or_create_device(data.client_name, data.device_serial)
+    device_id = get_or_create_device(
+        data.client_name, data.device_name, data.device_serial
+    )
     return {"device_id": device_id}
 
 # Update Server with Logs, Errors, and Consumable Data from Device
 @app.post("/update")
 def update(data: UpdateRequest):
-    device_id = resolve_device_id(data.client_name, data.device_serial)
+    device_id = resolve_device_id(
+        data.client_name, data.device_name, data.device_serial
+    )
     if device_id is None:
         raise HTTPException(status_code=404, detail="Device not registered")
 
@@ -106,10 +116,77 @@ def update(data: UpdateRequest):
             record_consumable_usage(conn, device_id, ts, c.name, c.value)
     return {"status": "ok", "device_id": device_id}
 
+# Home Page - List of Clients
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request):
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT client_name FROM devices ORDER BY client_name COLLATE NOCASE"
+        ).fetchall()
+    clients = [r["client_name"] for r in rows]
+    return templates.TemplateResponse(
+        request, "home.html", {"clients": clients}
+    )
+
+
+# Client Page - List of Device Names for a Client
+@app.get("/{client_name}", response_class=HTMLResponse)
+def view_client(client_name: str, request: Request):
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, device_name FROM devices "
+            "WHERE client_name = ? ORDER BY device_name COLLATE NOCASE",
+            (client_name,),
+        ).fetchall()
+    if not rows:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    # Group device ids by device_name, preserving alphabetical order.
+    ids_by_name: dict[str, list[int]] = {}
+    for r in rows:
+        ids_by_name.setdefault(r["device_name"], []).append(r["id"])
+    device_names = list(ids_by_name.keys())
+    chart = chart_payload(list(ids_by_name.items()), split_by_consumable=False)
+
+    return templates.TemplateResponse(
+        request,
+        "client_view.html",
+        {"client_name": client_name, "device_names": device_names, "chart": chart},
+    )
+
+
+# Device Name Page - List of Serials for a Client + Device Name
+@app.get("/{client_name}/{device_name}", response_class=HTMLResponse)
+def view_device_name(client_name: str, device_name: str, request: Request):
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, device_serial FROM devices "
+            "WHERE client_name = ? AND device_name = ? "
+            "ORDER BY device_serial COLLATE NOCASE",
+            (client_name, device_name),
+        ).fetchall()
+    if not rows:
+        raise HTTPException(status_code=404, detail="Device name not found")
+    device_serials = [r["device_serial"] for r in rows]
+    device_ids = [r["id"] for r in rows]
+    # Per-consumable tabs, usage summed across all serials of this device type.
+    chart = chart_payload([(device_name, device_ids)], split_by_consumable=True)
+    return templates.TemplateResponse(
+        request,
+        "device_name_view.html",
+        {
+            "client_name": client_name,
+            "device_name": device_name,
+            "device_serials": device_serials,
+            "chart": chart,
+        },
+    )
+
+
 # View Device Data and Logs (HTML Page)
-@app.get("/view/{client_name}/{device_serial}", response_class=HTMLResponse)
-def view_device(client_name: str, device_serial: str, request: Request):
-    device_id = resolve_device_id(client_name, device_serial)
+@app.get("/{client_name}/{device_name}/{device_serial}", response_class=HTMLResponse)
+def view_device(client_name: str, device_name: str, device_serial: str, request: Request):
+    device_id = resolve_device_id(client_name, device_name, device_serial)
     if device_id is None:
         raise HTTPException(status_code=404, detail="Device not found")
 
@@ -188,14 +265,14 @@ def view_device(client_name: str, device_serial: str, request: Request):
             (device_id,),
         ).fetchall()
 
-        # Per-Hour Totals from Past 30 Days
+        # Per-Reading Totals from Past 30 Days (actual receive time, not rounded)
         hourly_30_rows = conn.execute(
             "SELECT substr(timestamp, 1, 10) AS day, "
-            "       substr(timestamp, 12, 2) AS hour, "
+            "       substr(timestamp, 12, 8) AS time, "
             "       name, SUM(value) AS total "
             "FROM consumables_raw "
             "WHERE device_id = ? AND substr(timestamp, 1, 10) >= ? "
-            "GROUP BY day, hour, name",
+            "GROUP BY day, time, name",
             (device_id, days30_cutoff_day),
         ).fetchall()
 
@@ -256,20 +333,23 @@ def view_device(client_name: str, device_serial: str, request: Request):
 
     days_map: dict[str, dict] = {}
     for r in hourly_30_rows:
-        d = days_map.setdefault(r["day"], {"names": set(), "hours": {}})
+        d = days_map.setdefault(r["day"], {"names": set(), "times": {}})
         d["names"].add(r["name"])
-        d["hours"].setdefault(r["hour"], {})[r["name"]] = r["total"]
+        d["times"].setdefault(r["time"], {})[r["name"]] = r["total"]
     last_30_days = [
         {
             "day": day,
             "consumable_names": sorted(d["names"]),
-            "hours": [
-                {"hour": h, "by_name": d["hours"][h]}
-                for h in sorted(d["hours"].keys(), reverse=True)
+            "readings": [
+                {"time": t, "by_name": d["times"][t]}
+                for t in sorted(d["times"].keys(), reverse=True)
             ],
         }
         for day, d in sorted(days_map.items(), reverse=True)
     ]
+
+    # Per-consumable usage tabs for this single device.
+    chart = chart_payload([(device_serial, [device_id])], split_by_consumable=True)
 
     # Return Template
     return templates.TemplateResponse(
@@ -277,11 +357,13 @@ def view_device(client_name: str, device_serial: str, request: Request):
         "device_view.html",
         {
             "client_name": client_name,
+            "device_name": device_name,
             "device_serial": device_serial,
             "logs": logs,
             "errors": errors,
             "current_state": current_state,
             "yearly_totals": yearly_totals,
             "last_30_days": last_30_days,
+            "chart": chart,
         },
     )

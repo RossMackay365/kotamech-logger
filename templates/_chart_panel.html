@@ -1,0 +1,126 @@
+<div class="panel chart-panel" data-chart>
+    <div class="chart-head">
+        <div class="chart-tabs"></div>
+        <div class="chart-controls">
+            <select class="chart-metric" aria-label="Metric">
+                <option value="period">Per period</option>
+                <option value="cumulative">Cumulative</option>
+            </select>
+            <select class="chart-range" aria-label="Time range"></select>
+        </div>
+    </div>
+    <div class="chart-body"><canvas></canvas></div>
+    <p class="chart-empty empty-note" hidden>No consumable data recorded.</p>
+    <script type="application/json" class="chart-data">{{ chart | tojson }}</script>
+</div>
+
+<script src="/static/chart.umd.min.js"></script>
+<script>
+(function () {
+    var root = document.querySelector("[data-chart]");
+    if (!root || typeof Chart === "undefined") return;
+
+    var payload = JSON.parse(root.querySelector(".chart-data").textContent);
+    var tabsEl = root.querySelector(".chart-tabs");
+    var rangeSel = root.querySelector(".chart-range");
+    var metricSel = root.querySelector(".chart-metric");
+    var canvas = root.querySelector("canvas");
+    var emptyEl = root.querySelector(".chart-empty");
+
+    // No data at all -> show placeholder, hide controls/canvas.
+    if (!payload.tabs || payload.tabs.length === 0) {
+        root.querySelector(".chart-body").hidden = true;
+        root.querySelector(".chart-controls").hidden = true;
+        emptyEl.hidden = false;
+        return;
+    }
+
+    var PALETTE = ["#2f5fde", "#d9534f", "#5cb85c", "#f0ad4e",
+                   "#6f42c1", "#17a2b8", "#e83e8c", "#20c997"];
+    // Stable colour per consumable across tabs/ranges.
+    var names = {};
+    Object.keys(payload.data).forEach(function (tab) {
+        Object.keys(payload.data[tab]).forEach(function (rk) {
+            Object.keys(payload.data[tab][rk]).forEach(function (n) { names[n] = true; });
+        });
+    });
+    var colorMap = {};
+    Object.keys(names).sort().forEach(function (n, i) { colorMap[n] = PALETTE[i % PALETTE.length]; });
+
+    // Range dropdown.
+    payload.ranges.forEach(function (rk) {
+        var opt = document.createElement("option");
+        opt.value = rk;
+        opt.textContent = payload.rangeLabels[rk] || rk;
+        rangeSel.appendChild(opt);
+    });
+    rangeSel.value = payload.defaultRange;
+
+    // Tabs.
+    var activeTab = payload.tabs[0];
+    payload.tabs.forEach(function (tab) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "chart-tab" + (tab === activeTab ? " active" : "");
+        b.textContent = tab;
+        b.addEventListener("click", function () {
+            activeTab = tab;
+            tabsEl.querySelectorAll(".chart-tab").forEach(function (x) { x.classList.remove("active"); });
+            b.classList.add("active");
+            render();
+        });
+        tabsEl.appendChild(b);
+    });
+
+    function cumulative(arr) {
+        var s = 0;
+        return arr.map(function (v) { s += v; return s; });
+    }
+
+    var chart = null;
+    function render() {
+        var range = rangeSel.value;
+        var metric = metricSel.value;
+        var labels = payload.labels[range] || [];
+        var dsObj = (payload.data[activeTab] || {})[range] || {};
+        var datasets = Object.keys(dsObj).map(function (name) {
+            var vals = dsObj[name];
+            var data = metric === "cumulative" ? cumulative(vals) : vals;
+            var c = colorMap[name];
+            return {
+                label: name,
+                data: data,
+                borderColor: c,
+                backgroundColor: c,
+                fill: false,
+                tension: 0.2,
+                borderWidth: 2,
+                pointRadius: labels.length > 60 ? 0 : 2,
+            };
+        });
+        var showLegend = datasets.length > 1;
+        if (!chart) {
+            chart = new Chart(canvas.getContext("2d"), {
+                type: "line",
+                data: { labels: labels, datasets: datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: "index", intersect: false },
+                    plugins: { legend: { display: showLegend, position: "bottom" } },
+                    scales: { y: { beginAtZero: true } },
+                },
+            });
+        } else {
+            chart.data.labels = labels;
+            chart.data.datasets = datasets;
+            chart.options.plugins.legend.display = showLegend;
+            chart.update();
+        }
+    }
+
+    rangeSel.addEventListener("change", render);
+    metricSel.addEventListener("change", render);
+    render();
+})();
+</script>
