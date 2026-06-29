@@ -15,10 +15,8 @@ A simple logging system for collecting data from remote devices (Raspberry Pis) 
 3. Open the server in your browser:
 
    ```
-   http://log-server:8000/view/<client_name>/<device_serial>
+   http://log-server:8000
    ```
-
-   Replace `log-server` with whatever the server's tailnet hostname is (check the Tailscale admin console if unsure). `<client_name>` and `<device_serial>` are whatever was configured on the Pi.
 
 4. Log in with the admin account: `admin@log-server`.
 
@@ -102,6 +100,7 @@ kotamech_logger/
 ├── seed_db.py           # Test data seeder (optional)
 ├── database.db          # SQLite database (auto-created)
 ├── templates/           # HTML view page
+├── static/              # Static Files (Graphs)
 ├── requirements.txt     # Server Python dependencies
 └── logging/             # Everything that goes on the Pi
     ├── client.py

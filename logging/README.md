@@ -26,41 +26,7 @@ Open 'Logger.py' and complete:
 - `device_serial` — device_serial
 
 
-## 3. Produce the Log File
-
-`logging_client.py` no longer collects data itself. Each tick it reads the whole JSON file at `KOTAMECH_LOG_FILE`, sends it to the backend, then wipes the `logs` and `errors` arrays (consumables are kept). Your machine code is responsible for filling that file in.
-
-Use `Logger.py` to maintain the file:
-
-```json
-{
-  "client_name": "string",
-  "device_serial": "string",
-  "logs": ["string"],
-  "errors": [{ "error_type": "string", "message": "string" }],
-  "consumables": [{ "name": "string", "value": 1.23 }]
-}
-```
-
-### `Logger.py` helpers
-
-`Logger.py` is a small helper module **your machine code imports and calls** — it is not run by this service or the timer. Keeping the file populated is entirely the machine's responsibility; the client only reads, sends, and clears it. The methods on offer are:
-
-| Method | What it does |
-| --- | --- |
-| `setup()` | Loads the existing file, or creates it from `default_payload` if absent. Call once at startup. |
-| `add_log(message)` | Appends a log string. |
-| `add_error(error_type, message)` | Appends an error `{error_type, message}`. |
-| `update_consumable(name, value)` | Sets the running cumulative total for a consumable (adds it if new). |
-| `get_consumable_value(name)` | Returns the current stored value for a consumable, or `None`. |
-| `save_payload()` | Writes the in-memory payload to disk. |
-| `clear_logs_and_errors()` | Empties logs and errors, then saves. |
-
-Important: `add_log`, `add_error`, and `update_consumable` only mutate the in-memory payload. **Call `save_payload()` to flush to disk** — the client reads the file, so anything not saved won't be sent.
-
-Consumable `value` is the **running cumulative total used** for that consumable, not the amount used in the last hour. `logging_client.py` leaves consumables in place between ticks; the backend turns successive cumulative readings into per-hour usage.
-
-## 4. Run Setup Shell Script
+## 3. Run Setup Shell Script
 
 ```
 cd logging
