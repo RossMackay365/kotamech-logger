@@ -1,7 +1,8 @@
 import json
 import os
+import Config
 
-filename = "fileName.json"
+filename = "TO-DO"
 
 default_payload = {
         "client_name": "TO-DO",
@@ -14,8 +15,12 @@ default_payload = {
 
 payload = {}
 
+errors = []
+logs = []
+consumables = []
+
 def setup():
-    global default_payload, filename, payload
+    global default_payload, filename, payload, consumables
     # load existing file OR create new one
     if os.path.exists(filename):  
         with open(filename, "r") as f:
@@ -24,38 +29,41 @@ def setup():
         payload = default_payload
         with open(filename, "w") as f:
             json.dump(payload, f, indent=4)
+    consumables = payload["consumables"]
 
 def update_consumable(name, value):
-    global payload
+    global consumables
     # try to find existing entry
-    for item in payload["consumables"]:
+    for item in consumables:
         if item["name"] == name:
             item["value"] = value
             return  # stop here if updated
 
     # not found ? add new one
-    payload["consumables"].append({
+    consumables.append({
         "name": name,
         "value": value
     })
 
 def add_error(type, message):
-    payload["errors"].append({
+    errors.append({
         "error_type": type,
         "message": message
     })
 
 def add_log(message):
-    payload["logs"].append(message)
+    logs.append(message)
 
 def save_payload():
+    with open(filename, "r") as f:
+            payload = json.load(f)
+    payload["errors"].extend(errors)
+    payload["logs"].extend(logs)
+    payload["consumables"] = consumables
     with open(filename, "w") as f:
         json.dump(payload, f, indent=4)
-
-def clear_logs_and_errors():
-    payload["logs"] = []
-    payload["errors"] = []
-    save_payload()
+    errors.clear()
+    logs.clear()
 
 def get_consumable_value(name):
     for item in payload["consumables"]:

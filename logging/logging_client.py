@@ -26,8 +26,6 @@ LOG_FILE_ENV = "KOTAMECH_LOG_FILE"           # env var holding the path to the J
 
 REQUEST_TIMEOUT = 30
 
-# Identity placeholder; mirrors Logger.py's default_payload. A file still
-# carrying this value hasn't been configured yet, so we refuse to register it.
 PLACEHOLDER = "TO-DO"
 
 DEFAULT_PAYLOAD = {
